@@ -3,7 +3,7 @@
 
 if [ "$RUN_PRISMA_GENERATE" = "true" ]; then
   set -ex; \
-    cargo prisma generate --schema ./core/prisma/schema.prisma
+    cargo prisma generate --schema ./core/prisma/schema.sqlite.prisma
 fi
 
 set -ex; \

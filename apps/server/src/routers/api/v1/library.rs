@@ -18,6 +18,7 @@ use utoipa::ToSchema;
 use stump_core::{
 	config::StumpConfig,
 	db::{
+		coalesce_fn,
 		entity::{
 			macros::{
 				library_idents_select, library_scan_details,
@@ -278,12 +279,13 @@ async fn get_libraries_stats(
 
 	let stats = db
 		._query_raw::<LibraryStats>(raw!(
-			r"
+			&format!(
+				r"
 			WITH base_counts AS (
 				SELECT
 					COUNT(*) AS book_count,
-					IFNULL(SUM(media.size), 0) AS total_bytes,
-					IFNULL(series_count, 0) AS series_count
+					{}(SUM(media.size), 0) AS total_bytes,
+					{}(series_count, 0) AS series_count
 				FROM
 					media
 					INNER JOIN (
@@ -300,7 +302,7 @@ async fn get_libraries_stats(
 					media m
 					LEFT JOIN finished_reading_sessions frs ON frs.media_id = m.id
 					LEFT JOIN reading_sessions rs ON rs.media_id = m.id
-				WHERE {} IS TRUE OR (rs.user_id = {} OR frs.user_id = {})
+				WHERE {{}} IS TRUE OR (rs.user_id = {{}} OR frs.user_id = {{}})
 			)
 			SELECT
 				*
@@ -308,6 +310,9 @@ async fn get_libraries_stats(
 				base_counts
 				INNER JOIN progress_counts;
 			",
+				coalesce_fn(),
+				coalesce_fn()
+			),
 			PrismaValue::Boolean(params.all_users),
 			PrismaValue::String(user.id.clone()),
 			PrismaValue::String(user.id.clone())
@@ -1873,12 +1878,13 @@ async fn get_library_stats(
 
 	let stats = db
 		._query_raw::<LibraryStats>(raw!(
-			r"
+			&format!(
+				r"
 			WITH base_counts AS (
 				SELECT
 					COUNT(*) AS book_count,
-					IFNULL(SUM(media.size), 0) AS total_bytes,
-					IFNULL(series_count, 0) AS series_count
+					{}(SUM(media.size), 0) AS total_bytes,
+					{}(series_count, 0) AS series_count
 				FROM
 					media
 					INNER JOIN (
@@ -1887,7 +1893,7 @@ async fn get_library_stats(
 						FROM
 							series)
 					WHERE media.series_id IN (
-						SELECT id FROM series WHERE library_id = {}
+						SELECT id FROM series WHERE library_id = {{}}
 					)
 			),
 			progress_counts AS (
@@ -1898,8 +1904,8 @@ async fn get_library_stats(
 					media m
 					LEFT JOIN finished_reading_sessions frs ON frs.media_id = m.id
 					LEFT JOIN reading_sessions rs ON rs.media_id = m.id
-				WHERE {} IS TRUE OR (rs.user_id = {} OR frs.user_id = {}) AND m.series_id IN (
-					SELECT id FROM series WHERE library_id = {}
+				WHERE {{}} IS TRUE OR (rs.user_id = {{}} OR frs.user_id = {{}}) AND m.series_id IN (
+					SELECT id FROM series WHERE library_id = {{}}
 				)
 			)
 			SELECT
@@ -1908,6 +1914,9 @@ async fn get_library_stats(
 				base_counts
 				INNER JOIN progress_counts;
 			",
+				coalesce_fn(),
+				coalesce_fn()
+			),
 			PrismaValue::String(id.clone()),
 			PrismaValue::Boolean(params.all_users),
 			PrismaValue::String(user.id.clone()),

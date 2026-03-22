@@ -1,0 +1,10 @@
+[package]
+name = "codex_temp_check"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+stump_core = { path = "D:/Developer/stump/core" }
+cli = { path = "D:/Developer/stump/crates/cli" }

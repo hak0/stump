@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use prisma_client_rust::{chrono::Utc, raw, PrismaValue, Raw};
 use serde::{Deserialize, Serialize};
 
-use crate::{prisma::PrismaClient, CoreResult};
+use crate::{
+	db::sql_string_list,
+	prisma::PrismaClient,
+	CoreResult,
+};
 
 pub fn default_now() -> String {
 	Utc::now().to_rfc3339()
@@ -77,12 +81,8 @@ pub(crate) fn book_positions_in_series_raw_query(
 			FROM ranked
 			WHERE id IN ({})
 			"#,
-			// Note: Prisma (SQLite) doesn't support PrismaValue::List, so we need to manually format this
-			book_ids
-				.iter()
-				.map(|id| format!("'{id}'"))
-				.collect::<Vec<_>>()
-				.join(",")
+			// Note: Prisma doesn't support PrismaValue::List here, so we format the IN-list manually.
+			sql_string_list(book_ids)
 		),
 		PrismaValue::String(series_id)
 	)

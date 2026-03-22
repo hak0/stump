@@ -25,7 +25,7 @@ pub mod prisma;
 
 use config::logging::STUMP_SHADOW_TEXT;
 use config::StumpConfig;
-use db::{DBPragma, JournalMode};
+use db::{DatabaseBackend, DBPragma, JournalMode};
 use job::{JobController, JobScheduler};
 use prisma::server_config;
 
@@ -185,6 +185,11 @@ impl StumpCore {
 	/// 1. The initial WAL setup has not already been completed on first run
 	/// 2. The journal mode is not already set to WAL
 	pub async fn init_journal_mode(&self) -> Result<JournalModeChanged, CoreError> {
+		if self.ctx.config.database_backend() != DatabaseBackend::Sqlite {
+			tracing::trace!("Skipping journal mode initialization for non-SQLite database");
+			return Ok(false);
+		}
+
 		let client = self.ctx.db.clone();
 
 		let wal_mode_setup_completed = client

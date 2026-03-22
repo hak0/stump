@@ -178,7 +178,7 @@ pub(crate) async fn get_duplicate_media(
 			r"
 			SELECT COUNT(*) as count FROM media
 			WHERE hash IN (
-				SELECT hash FROM media GROUP BY hash HAVING COUNT(*) s> 1
+				SELECT hash FROM media GROUP BY hash HAVING COUNT(*) > 1
 			)"
 		))
 		.exec()

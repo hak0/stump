@@ -45,6 +45,8 @@ apps/server/client/*
 !apps/server/client/.placeholder
 *.db*
 *.sqlite*
+!core/prisma/schema.sqlite.prisma
+!core/prisma/schema.postgresql.prisma
 *prisma.rs*
 
 # nix

@@ -23,13 +23,13 @@ Stump uses [Prisma](https://www.prisma.io/) as its ORM. Whenever you make change
 
 ```bash
 # Generate the Prisma client
-cargo prisma generate --schema=./core/prisma/schema.prisma
+cargo prisma generate --schema=./core/prisma/schema.sqlite.prisma
 
 # Export the TypeScript types
 cargo codegen -- --skip-prisma
 
 # Optionally, if a migration is needed
-cargo prisma migrate dev --schema=./core/prisma/schema.prisma
+cargo prisma migrate dev --schema=./core/prisma/schema.sqlite.prisma
 ```
 
 ## License 📝

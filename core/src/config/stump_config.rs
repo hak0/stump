@@ -21,6 +21,7 @@ pub mod env_keys {
 	pub const PORT_KEY: &str = "STUMP_PORT";
 	pub const VERBOSITY_KEY: &str = "STUMP_VERBOSITY";
 	pub const PRETTY_LOGS_KEY: &str = "STUMP_PRETTY_LOGS";
+	pub const DATABASE_URL_KEY: &str = "STUMP_DATABASE_URL";
 	pub const DB_PATH_KEY: &str = "STUMP_DB_PATH";
 	pub const CLIENT_KEY: &str = "STUMP_CLIENT_DIR";
 	pub const ORIGINS_KEY: &str = "STUMP_ALLOWED_ORIGINS";
@@ -104,7 +105,12 @@ pub struct StumpConfig {
 	#[env_key(PRETTY_LOGS_KEY)]
 	pub pretty_logs: bool,
 
-	/// An optional custom path for the database.
+	/// An optional full database URL. Supports both SQLite and PostgreSQL.
+	#[default_value(None)]
+	#[env_key(DATABASE_URL_KEY)]
+	pub database_url: Option<String>,
+
+	/// An optional custom path for the SQLite database. Prefer `database_url` for new deployments.
 	#[default_value(None)]
 	#[env_key(DB_PATH_KEY)]
 	pub db_path: Option<String>,
@@ -197,6 +203,14 @@ pub struct StumpConfig {
 }
 
 impl StumpConfig {
+	pub fn resolved_database_url(&self) -> String {
+		crate::db::resolve_database_url(self)
+	}
+
+	pub fn database_backend(&self) -> crate::db::DatabaseBackend {
+		crate::db::DatabaseBackend::from_url(&self.resolved_database_url())
+	}
+
 	/// Ensures that the configuration directory exists and saves the `StumpConfig`'s current values
 	/// to Stump.toml in the configuration directory.
 	///
@@ -308,6 +322,7 @@ mod tests {
 	use tempfile;
 
 	use super::*;
+	use crate::db::{resolve_database_url, DatabaseBackend};
 
 	#[test]
 	fn test_writing_to_config_dir() {
@@ -323,6 +338,7 @@ mod tests {
 			port: Some(1337),
 			verbosity: Some(3),
 			pretty_logs: Some(true),
+			database_url: None,
 			db_path: Some("not_a_real_path".to_string()),
 			client_dir: Some("not_a_real_dir".to_string()),
 			custom_templates_dir: None,
@@ -360,6 +376,7 @@ mod tests {
 				port: Some(1337),
 				verbosity: Some(3),
 				pretty_logs: Some(true),
+				database_url: None,
 				db_path: Some("not_a_real_path".to_string()),
 				client_dir: Some("not_a_real_dir".to_string()),
 				config_dir: Some(config_dir),
@@ -415,6 +432,7 @@ mod tests {
 						port: 1337,
 						verbosity: 2,
 						pretty_logs: true,
+						database_url: None,
 						db_path: None,
 						client_dir: "./client".to_string(),
 						config_dir,
@@ -437,5 +455,35 @@ mod tests {
 				);
 			},
 		);
+	}
+
+	#[test]
+	fn test_database_url_takes_priority_over_db_path() {
+		let mut config = StumpConfig::debug();
+		config.database_url = Some("postgresql://stump:stump@localhost:5432/stump".to_string());
+		config.db_path = Some("ignored_path".to_string());
+
+		assert_eq!(
+			resolve_database_url(&config),
+			"postgresql://stump:stump@localhost:5432/stump"
+		);
+	}
+
+	#[test]
+	fn test_db_path_falls_back_to_sqlite_url() {
+		let mut config = StumpConfig::debug();
+		config.database_url = None;
+		config.db_path = Some("library_data".to_string());
+
+		assert_eq!(resolve_database_url(&config), "file:library_data/stump.db");
+	}
+
+	#[test]
+	fn test_database_backend_detection() {
+		assert_eq!(
+			DatabaseBackend::from_url("postgresql://stump:stump@localhost:5432/stump"),
+			DatabaseBackend::Postgres
+		);
+		assert_eq!(DatabaseBackend::from_url("file:dev.db"), DatabaseBackend::Sqlite);
 	}
 }

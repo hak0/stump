@@ -102,8 +102,10 @@ A quick summary of the steps required to get going:
     # build the React app
     yarn web build
     # generate the Prisma client and Rust-TypeScript types
-    cargo codegen # or cargo prisma generate --schema=./core/prisma/schema.prisma for just the Prisma client
-   ```
+    cargo codegen # or cargo prisma generate --schema=./core/prisma/schema.sqlite.prisma for the default SQLite client
+    ```
+
+    PostgreSQL development is also supported via `core/prisma/schema.postgresql.prisma`. Stump now prefers `STUMP_DATABASE_URL` for database configuration, while `STUMP_DB_PATH` remains as the legacy SQLite-only path override.
 
 4. Start one of the apps:
 

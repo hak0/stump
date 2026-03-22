@@ -2,7 +2,7 @@ use clap::Subcommand;
 use dialoguer::Confirm;
 use stump_core::{
 	config::StumpConfig,
-	db::{create_client, DBPragma, JournalMode},
+	db::{create_client, DatabaseBackend, DBPragma, JournalMode},
 };
 
 use super::default_progress_spinner;
@@ -29,6 +29,12 @@ pub async fn handle_system_command(
 }
 
 async fn set_journal_mode(mode: JournalMode, config: &StumpConfig) -> CliResult<()> {
+	if config.database_backend() != DatabaseBackend::Sqlite {
+		return Err(CliError::OperationFailed(
+			"Journal mode is only supported for SQLite databases".to_string(),
+		));
+	}
+
 	let confirmation = Confirm::new()
     .with_prompt("Changing the journal mode can lead to unexpected behavior. Are you sure you want to continue?")
     .interact()?;

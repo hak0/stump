@@ -74,6 +74,27 @@ The directory where Stump will look for its configuration file.
 | ------ | ------------- |
 | String | `~/.stump`    |
 
+### STUMP_DATABASE_URL
+
+The full database connection string for Stump. This supports both SQLite and PostgreSQL. Examples:
+
+- SQLite: `file:/data/stump.db`
+- PostgreSQL: `postgresql://stump:password@localhost:5432/stump`
+
+If `STUMP_DATABASE_URL` is set, it takes priority over `STUMP_DB_PATH`.
+
+| Type   | Default Value |
+| ------ | ------------- |
+| String | unset         |
+
+### STUMP_DB_PATH
+
+The legacy SQLite-only database path override. When set, Stump stores the database at `{db_path}/stump.db`. Prefer `STUMP_DATABASE_URL` for new deployments, especially for PostgreSQL.
+
+| Type   | Default Value |
+| ------ | ------------- |
+| String | unset         |
+
 ### STUMP_CLIENT_DIR
 
 The directory the contains the web bundle for the web UI
