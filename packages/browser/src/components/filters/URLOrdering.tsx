@@ -15,6 +15,7 @@ export default function URLOrdering({ entity }: Props) {
 	const isMobile = useMediaMatch('(max-width: 768px)')
 
 	const { ordering, setFilter } = useFilterContext()
+	const isRandom = ordering.order_by === 'random'
 
 	/**
 	 * A callback to handle the change of the ordering field.
@@ -58,7 +59,11 @@ export default function URLOrdering({ entity }: Props) {
 					value={ordering.order_by || 'name'}
 					onChange={handleChangeOrderBy}
 				/>
-				<OrderByDirection value={ordering.direction} onChange={handleChangeDirection} />
+				<OrderByDirection
+					value={ordering.direction}
+					onChange={handleChangeDirection}
+					disabled={isRandom}
+				/>
 			</Popover.Content>
 		</Popover>
 	)

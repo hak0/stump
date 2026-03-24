@@ -5,12 +5,14 @@ type Direction = 'asc' | 'desc'
 type Props = {
 	value?: Direction
 	onChange: (value: Direction) => void
+	disabled?: boolean
 }
-export default function OrderByDirection({ value, onChange }: Props) {
+export default function OrderByDirection({ value, onChange, disabled }: Props) {
 	return (
 		<Button
 			variant="ghost"
 			className="justify-start"
+			disabled={disabled}
 			onClick={() => onChange(value === 'desc' ? 'asc' : 'desc')}
 		>
 			<SortAsc

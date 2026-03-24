@@ -3,6 +3,7 @@ import { Media } from '@stump/sdk'
 import { Search } from 'lucide-react'
 import { useState } from 'react'
 
+import { DEFAULT_BOOKS_ORDERING } from '../filters'
 import { ManualFilterProvider } from '../filters/FilterProvider'
 import BookSearch from './BookSearch'
 
@@ -41,7 +42,7 @@ export default function BookSearchOverlay({ onBookSelect, sheetProps }: Props) {
 	}
 
 	return (
-		<ManualFilterProvider>
+		<ManualFilterProvider defaultOrdering={DEFAULT_BOOKS_ORDERING}>
 			<Sheet
 				open={isOpen}
 				onClose={() => setIsOpen(false)}

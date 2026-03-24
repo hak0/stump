@@ -2,19 +2,20 @@ import { toObjectParams, toUrlParams } from '@stump/sdk'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-import { FilterContext } from './context'
+import { FilterContext, Ordering } from './context'
 
 // TODO: clean up this file!
 
 type Props = {
 	children: React.ReactNode
+	defaultOrdering?: Ordering
 }
 
 /**
  * A context provider to handle filter state. This component is used throughout the
  * entity overview pages (e.g. /media, /series, etc.)
  */
-export default function FilterProvider({ children }: Props) {
+export default function FilterProvider({ children, defaultOrdering }: Props) {
 	const [filters, setFilters] = useSearchParams()
 
 	/**
@@ -31,10 +32,11 @@ export default function FilterProvider({ children }: Props) {
 	 */
 	const ordering = useMemo(
 		() => ({
-			direction: params?.direction as 'asc' | 'desc' | undefined,
-			order_by: params?.order_by as string | undefined,
+			direction:
+				(params?.direction as 'asc' | 'desc' | undefined) ?? defaultOrdering?.direction,
+			order_by: (params?.order_by as string | undefined) ?? defaultOrdering?.order_by,
 		}),
-		[params],
+		[defaultOrdering?.direction, defaultOrdering?.order_by, params],
 	)
 
 	/**
@@ -86,7 +88,7 @@ export default function FilterProvider({ children }: Props) {
 /**
  * A context provider to handle filter state where everything is local state.
  */
-export function ManualFilterProvider({ children }: Props) {
+export function ManualFilterProvider({ children, defaultOrdering }: Props) {
 	const [filters, setFilters] = useState<Record<string, unknown>>({})
 
 	/**
@@ -94,10 +96,11 @@ export function ManualFilterProvider({ children }: Props) {
 	 */
 	const ordering = useMemo(
 		() => ({
-			direction: filters?.direction as 'asc' | 'desc' | undefined,
-			order_by: filters?.order_by as string | undefined,
+			direction:
+				(filters?.direction as 'asc' | 'desc' | undefined) ?? defaultOrdering?.direction,
+			order_by: (filters?.order_by as string | undefined) ?? defaultOrdering?.order_by,
 		}),
-		[filters],
+		[defaultOrdering?.direction, defaultOrdering?.order_by, filters],
 	)
 
 	/**

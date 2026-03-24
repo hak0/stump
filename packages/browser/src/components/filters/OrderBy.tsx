@@ -14,6 +14,7 @@ export default function OrderBy({ entity }: Props) {
 	const isMobile = useMediaMatch('(max-width: 768px)')
 
 	const { filters, ordering, setFilters } = useFilterContext()
+	const isRandom = ordering.order_by === 'random'
 
 	const handleChangeOrderBy = (value: string) =>
 		setFilters({
@@ -46,7 +47,11 @@ export default function OrderBy({ entity }: Props) {
 				align={isMobile ? 'start' : 'end'}
 			>
 				<OrderBySelect entity={entity} value={ordering.order_by} onChange={handleChangeOrderBy} />
-				<OrderByDirection value={ordering.direction} onChange={handleChangeDirection} />
+				<OrderByDirection
+					value={ordering.direction}
+					onChange={handleChangeDirection}
+					disabled={isRandom}
+				/>
 			</Popover.Content>
 		</Popover>
 	)

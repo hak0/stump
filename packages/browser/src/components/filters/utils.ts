@@ -40,7 +40,7 @@ export const tableSortToOrdering = (sort: ReactTableGlobalSort[]): Ordering => {
  * Converts the ordering object to a react-table sort object.
  */
 export const orderingToTableSort = (ordering: Ordering): ReactTableGlobalSort[] => {
-	if (ordering.order_by) {
+	if (ordering.order_by && ordering.order_by !== 'random') {
 		return [
 			{
 				desc: ordering.direction === 'desc',

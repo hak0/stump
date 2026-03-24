@@ -8,7 +8,11 @@ import { EXCLUDED_FILTER_KEYS } from './utils'
 
 type Return = IFilterContext
 
-export function useFilterScene(): Return {
+type Options = {
+	defaultOrdering?: Ordering
+}
+
+export function useFilterScene({ defaultOrdering }: Options = {}): Return {
 	const [searchParams, setSearchParams] = useSearchParams()
 
 	const is3XLScreenOrBigger = useMediaMatch('(min-width: 1600px)')
@@ -33,10 +37,14 @@ export function useFilterScene(): Return {
 	const ordering = useMemo(
 		() =>
 			objectWithoutEmptyValues({
-				direction: searchParams.get('direction') as 'asc' | 'desc' | undefined,
-				order_by: searchParams.get('order_by') as string | undefined,
+				direction:
+					(searchParams.get('direction') as 'asc' | 'desc' | undefined) ??
+					defaultOrdering?.direction,
+				order_by:
+					(searchParams.get('order_by') as string | undefined) ??
+					defaultOrdering?.order_by,
 			}),
-		[searchParams],
+		[defaultOrdering?.direction, defaultOrdering?.order_by, searchParams],
 	)
 
 	/**

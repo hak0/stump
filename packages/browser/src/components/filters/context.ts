@@ -7,6 +7,11 @@ export type Ordering = {
 	order_by?: string
 }
 
+export const DEFAULT_BOOKS_ORDERING: Ordering = {
+	direction: 'desc',
+	order_by: 'modified_at',
+}
+
 export type Pagination = {
 	page: number
 	page_size: number

@@ -8,6 +8,7 @@ import BookGrid from '@/components/book/BookGrid'
 import { defaultBookColumnSort } from '@/components/book/table'
 import {
 	FilterContext,
+	DEFAULT_BOOKS_ORDERING,
 	FilterHeader,
 	URLFilterContainer,
 	URLFilterDrawer,
@@ -39,7 +40,7 @@ export default function SeriesOverviewScene() {
 		pagination: { page, page_size },
 		setPage,
 		...rest
-	} = useFilterScene()
+	} = useFilterScene({ defaultOrdering: DEFAULT_BOOKS_ORDERING })
 
 	const params = useMemo(
 		() => ({

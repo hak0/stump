@@ -25,6 +25,9 @@ use crate::{
 		apply_media_age_restriction, apply_media_filters_for_user,
 		apply_media_library_not_hidden_for_user_filter, apply_media_pagination,
 	},
+	routers::api::v1::media::random::{
+		get_randomized_media_ids, is_random_ordering, sort_media_by_ids,
+	},
 };
 
 #[utoipa::path(
@@ -60,10 +63,49 @@ pub(crate) async fn get_media(
 	let user_id = req.id();
 
 	let is_unpaged = pagination.is_unpaged();
-	let order_by_param: MediaOrderByParam = ordering.try_into()?;
-
 	let pagination_cloned = pagination.clone();
 	let where_conditions = apply_media_filters_for_user(filters, req.user());
+
+	if is_random_ordering(&ordering.order_by) {
+		let (media, count) = db
+			._transaction()
+			.run(|client| async move {
+				let (randomized_ids, count) =
+					get_randomized_media_ids(client, where_conditions.clone(), &pagination_cloned)
+						.await?;
+
+				if randomized_ids.is_empty() {
+					return Ok((vec![], count));
+				}
+
+				let media = client
+					.media()
+					.find_many(vec![media::id::in_vec(randomized_ids.clone())])
+					.with(media::active_user_reading_sessions::fetch(vec![
+						active_reading_session::user_id::equals(user_id.clone()),
+					]))
+					.with(media::finished_user_reading_sessions::fetch(vec![
+						finished_reading_session::user_id::equals(user_id),
+					]))
+					.with(media::metadata::fetch())
+					.exec()
+					.await?
+					.into_iter()
+					.map(|m| m.into())
+					.collect::<Vec<Media>>();
+
+				Ok((sort_media_by_ids(media, &randomized_ids), count))
+			})
+			.await?;
+
+		if let Some(count) = count {
+			return Ok(Json(Pageable::from((media, count, pagination))));
+		}
+
+		return Ok(Json(Pageable::from(media)));
+	}
+
+	let order_by_param: MediaOrderByParam = ordering.try_into()?;
 
 	let (media, count) = db
 		._transaction()

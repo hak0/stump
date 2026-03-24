@@ -1,5 +1,6 @@
 pub(crate) mod bulk;
 pub(crate) mod individual;
+pub(crate) mod random;
 pub(crate) mod thumbnails;
 
 use axum::{

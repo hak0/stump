@@ -62,7 +62,10 @@ use crate::{
 			apply_series_filters_for_user,
 			apply_series_library_not_hidden_for_user_filter,
 		},
-		v1::media::thumbnails::get_media_thumbnail,
+		v1::media::{
+			random::{get_randomized_media_ids, is_random_ordering, sort_media_by_ids},
+			thumbnails::get_media_thumbnail,
+		},
 	},
 	utils::{http::ImageResponse, validate_and_load_image},
 };
@@ -703,14 +706,52 @@ async fn get_series_media(
 
 	trace!(?ordering, ?pagination, "get_series_media");
 
-	let order_by_param: MediaOrderByParam = ordering.0.try_into()?;
-
 	let _can_access_series = db
 		.series()
 		.find_first(series_where_params)
 		.exec()
 		.await?
 		.ok_or(APIError::NotFound(String::from("Series not found")))?;
+
+	if is_random_ordering(&ordering.0.order_by) {
+		let (media, count) = db
+			._transaction()
+			.run(|client| async move {
+				let (randomized_ids, count) =
+					get_randomized_media_ids(client, media_where_params.clone(), &pagination_cloned)
+						.await?;
+
+				if randomized_ids.is_empty() {
+					return Ok((vec![], count));
+				}
+
+				let media = client
+					.media()
+					.find_many(vec![media::id::in_vec(randomized_ids.clone())])
+					.with(media::active_user_reading_sessions::fetch(vec![
+						active_reading_session::user_id::equals(user_id.clone()),
+					]))
+					.with(media::finished_user_reading_sessions::fetch(vec![
+						finished_reading_session::user_id::equals(user_id),
+					]))
+					.exec()
+					.await?
+					.into_iter()
+					.map(|m| m.into())
+					.collect::<Vec<Media>>();
+
+				Ok((sort_media_by_ids(media, &randomized_ids), count))
+			})
+			.await?;
+
+		if let Some(count) = count {
+			return Ok(Json(Pageable::from((media, count, pagination))));
+		}
+
+		return Ok(Json(Pageable::from(media)));
+	}
+
+	let order_by_param: MediaOrderByParam = ordering.0.try_into()?;
 
 	let (media, count) = db
 		._transaction()
