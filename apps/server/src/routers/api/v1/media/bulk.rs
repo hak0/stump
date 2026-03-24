@@ -69,7 +69,7 @@ pub(crate) async fn get_media(
 	if is_random_ordering(&ordering.order_by) {
 		let (media, count) = db
 			._transaction()
-			.run(|client| async move {
+			.run(|client| async move -> APIResult<(Vec<Media>, Option<i64>)> {
 				let (randomized_ids, count) =
 					get_randomized_media_ids(&client, where_conditions.clone(), &pagination_cloned)
 						.await?;

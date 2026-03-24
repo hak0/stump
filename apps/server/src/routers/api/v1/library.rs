@@ -501,7 +501,7 @@ async fn get_library_media(
 		let (media, count) = ctx
 			.db
 			._transaction()
-			.run(|client| async move {
+			.run(|client| async move -> APIResult<(Vec<Media>, Option<i64>)> {
 				let (randomized_ids, count) =
 					get_randomized_media_ids(&client, media_conditions.clone(), &pagination_cloned)
 						.await?;
