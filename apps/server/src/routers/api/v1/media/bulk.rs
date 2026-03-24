@@ -71,7 +71,7 @@ pub(crate) async fn get_media(
 			._transaction()
 			.run(|client| async move {
 				let (randomized_ids, count) =
-					get_randomized_media_ids(client, where_conditions.clone(), &pagination_cloned)
+					get_randomized_media_ids(&client, where_conditions.clone(), &pagination_cloned)
 						.await?;
 
 				if randomized_ids.is_empty() {

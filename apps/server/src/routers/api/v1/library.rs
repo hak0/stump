@@ -503,7 +503,7 @@ async fn get_library_media(
 			._transaction()
 			.run(|client| async move {
 				let (randomized_ids, count) =
-					get_randomized_media_ids(client, media_conditions.clone(), &pagination_cloned)
+					get_randomized_media_ids(&client, media_conditions.clone(), &pagination_cloned)
 						.await?;
 
 				if randomized_ids.is_empty() {

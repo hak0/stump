@@ -718,7 +718,7 @@ async fn get_series_media(
 			._transaction()
 			.run(|client| async move {
 				let (randomized_ids, count) =
-					get_randomized_media_ids(client, media_where_params.clone(), &pagination_cloned)
+					get_randomized_media_ids(&client, media_where_params.clone(), &pagination_cloned)
 						.await?;
 
 				if randomized_ids.is_empty() {
