@@ -716,13 +716,13 @@ async fn get_series_media(
 	if is_random_ordering(&ordering.0.order_by) {
 		let (media, count) = db
 			._transaction()
-			.run(|client| async move -> APIResult<(Vec<Media>, Option<i64>)> {
+			.run(|client| async move {
 				let (randomized_ids, count) =
 					get_randomized_media_ids(&client, media_where_params.clone(), &pagination_cloned)
 						.await?;
 
 				if randomized_ids.is_empty() {
-					return Ok((vec![], count));
+					return Ok::<(Vec<Media>, Option<i64>), APIError>((vec![], count));
 				}
 
 				let media = client
@@ -740,7 +740,10 @@ async fn get_series_media(
 					.map(|m| m.into())
 					.collect::<Vec<Media>>();
 
-				Ok((sort_media_by_ids(media, &randomized_ids), count))
+				Ok::<(Vec<Media>, Option<i64>), APIError>((
+					sort_media_by_ids(media, &randomized_ids),
+					count,
+				))
 			})
 			.await?;
 

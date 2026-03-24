@@ -501,13 +501,13 @@ async fn get_library_media(
 		let (media, count) = ctx
 			.db
 			._transaction()
-			.run(|client| async move -> APIResult<(Vec<Media>, Option<i64>)> {
+			.run(|client| async move {
 				let (randomized_ids, count) =
 					get_randomized_media_ids(&client, media_conditions.clone(), &pagination_cloned)
 						.await?;
 
 				if randomized_ids.is_empty() {
-					return Ok((vec![], count));
+					return Ok::<(Vec<Media>, Option<i64>), APIError>((vec![], count));
 				}
 
 				let media = client
@@ -519,7 +519,10 @@ async fn get_library_media(
 					.map(|m| m.into())
 					.collect::<Vec<Media>>();
 
-				Ok((sort_media_by_ids(media, &randomized_ids), count))
+				Ok::<(Vec<Media>, Option<i64>), APIError>((
+					sort_media_by_ids(media, &randomized_ids),
+					count,
+				))
 			})
 			.await?;
 
