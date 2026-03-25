@@ -3,10 +3,14 @@ use std::{
 	fs::File,
 	io::BufReader,
 	path::{Path, PathBuf},
+	sync::{Arc, OnceLock},
 };
 
 use serde::{Deserialize, Serialize};
-use tokio::{sync::oneshot, task::spawn_blocking};
+use tokio::{
+	sync::{oneshot, Semaphore},
+	task::spawn_blocking,
+};
 use tracing::debug;
 
 use crate::{
@@ -19,6 +23,22 @@ use crate::{
 };
 
 use super::{rar::RarProcessor, zip::ZipProcessor};
+
+fn page_extraction_semaphore() -> &'static Arc<Semaphore> {
+	static PAGE_EXTRACTION_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+	PAGE_EXTRACTION_SEMAPHORE.get_or_init(|| {
+		let max_concurrency = std::thread::available_parallelism()
+			.map(usize::from)
+			.unwrap_or(1)
+			.max(1);
+		tracing::debug!(
+			max_concurrency,
+			"Semaphore created for media page extraction"
+		);
+		Arc::new(Semaphore::new(max_concurrency))
+	})
+}
 
 /// A struct representing the options for processing a file. This is a subset of [`LibraryConfig`]
 /// and is used to pass options to the [`FileProcessor`] implementations.
@@ -354,11 +374,17 @@ pub async fn get_page_async(
 	page: i32,
 	config: &StumpConfig,
 ) -> Result<(ContentType, Vec<u8>), FileError> {
+	let permit = page_extraction_semaphore()
+		.clone()
+		.acquire_owned()
+		.await
+		.map_err(|_| FileError::UnknownError("Page extraction semaphore closed".to_string()))?;
 	let (tx, rx) = oneshot::channel();
 
 	let handle = spawn_blocking({
 		let path = path.as_ref().to_path_buf();
 		let config = config.clone();
+		let _permit = permit;
 
 		move || {
 			let send_result =
