@@ -1,4 +1,11 @@
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
+use std::{
+	collections::HashMap,
+	fs::File,
+	io::Read,
+	path::PathBuf,
+	sync::{Arc, Condvar, Mutex, OnceLock},
+	time::UNIX_EPOCH,
+};
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -10,7 +17,7 @@ use crate::{
 		hash,
 		media::{
 			process::{FileProcessor, FileProcessorOptions, ProcessedFile},
-			utils::{metadata_from_buf, sort_file_names},
+			utils::metadata_from_buf,
 		},
 		FileParts, PathUtils, ProcessedFileHashes,
 	},
@@ -18,6 +25,171 @@ use crate::{
 
 /// A file processor for ZIP files.
 pub struct ZipProcessor;
+
+#[derive(Clone, PartialEq, Eq)]
+struct ArchiveSignature {
+	modified_at_unix_nanos: Option<u128>,
+	size_bytes: u64,
+}
+
+#[derive(Clone)]
+struct IndexedZipEntry {
+	archive_index: usize,
+	content_type: ContentType,
+}
+
+struct ZipPageIndex {
+	entries: Vec<IndexedZipEntry>,
+}
+
+enum ZipPageIndexState {
+	Building,
+	Ready(Arc<ZipPageIndex>),
+}
+
+struct ZipPageIndexCacheEntry {
+	signature: ArchiveSignature,
+	state: Mutex<ZipPageIndexState>,
+	notify: Condvar,
+}
+
+type ZipPageIndexCache = HashMap<String, Arc<ZipPageIndexCacheEntry>>;
+
+fn zip_page_index_cache() -> &'static Mutex<ZipPageIndexCache> {
+	static CACHE: OnceLock<Mutex<ZipPageIndexCache>> = OnceLock::new();
+	CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn archive_signature(path: &str) -> Result<ArchiveSignature, FileError> {
+	let metadata = std::fs::metadata(path)?;
+	let modified_at_unix_nanos = metadata
+		.modified()
+		.ok()
+		.and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+		.map(|duration| duration.as_nanos());
+
+	Ok(ArchiveSignature {
+		modified_at_unix_nanos,
+		size_bytes: metadata.len(),
+	})
+}
+
+fn build_page_index(path: &str) -> Result<ZipPageIndex, FileError> {
+	let zip_file = File::open(path)?;
+	let mut archive = zip::ZipArchive::new(zip_file)?;
+
+	if archive.is_empty() {
+		error!(path, "Empty zip file");
+		return Err(FileError::ArchiveEmptyError);
+	}
+
+	let mut sortable_entries = Vec::new();
+
+	for archive_index in 0..archive.len() {
+		let file = archive.by_index(archive_index)?;
+
+		if file.is_dir() {
+			continue;
+		}
+
+		let path_buf = file.enclosed_name().unwrap_or_else(|| {
+			tracing::warn!("Failed to get enclosed name for zip entry");
+			PathBuf::from(file.name())
+		});
+		let path = path_buf.as_path();
+
+		if path.is_hidden_file() {
+			trace!(path = ?path_buf, "Skipping hidden file");
+			continue;
+		}
+
+		let content_type = path.naive_content_type();
+		if content_type.is_image() {
+			sortable_entries.push((path.to_string_lossy().to_string(), IndexedZipEntry {
+				archive_index,
+				content_type,
+			}));
+		}
+	}
+
+	sortable_entries.sort_by(|(left_name, _), (right_name, _)| {
+		alphanumeric_sort::compare_str(left_name, right_name)
+	});
+
+	let entries = sortable_entries
+		.into_iter()
+		.map(|(_, entry)| entry)
+		.collect::<Vec<_>>();
+
+	Ok(ZipPageIndex { entries })
+}
+
+fn get_or_build_page_index(path: &str) -> Result<Arc<ZipPageIndex>, FileError> {
+	let signature = archive_signature(path)?;
+	let path_key = path.to_string();
+
+	let (cache_entry, is_builder) = {
+		let mut cache = zip_page_index_cache()
+			.lock()
+			.map_err(|_| FileError::UnknownError("ZIP page index cache poisoned".to_string()))?;
+
+		match cache.get(&path_key) {
+			Some(existing) if existing.signature == signature => (existing.clone(), false),
+			_ => {
+				let entry = Arc::new(ZipPageIndexCacheEntry {
+					signature,
+					state: Mutex::new(ZipPageIndexState::Building),
+					notify: Condvar::new(),
+				});
+				cache.insert(path_key.clone(), entry.clone());
+				(entry, true)
+			},
+		}
+	};
+
+	if is_builder {
+		match build_page_index(path) {
+			Ok(index) => {
+				let ready_index = Arc::new(index);
+				let mut state = cache_entry.state.lock().map_err(|_| {
+					FileError::UnknownError("ZIP page index cache entry poisoned".to_string())
+				})?;
+				*state = ZipPageIndexState::Ready(ready_index.clone());
+				cache_entry.notify.notify_all();
+				Ok(ready_index)
+			},
+			Err(error) => {
+				let mut cache = zip_page_index_cache().lock().map_err(|_| {
+					FileError::UnknownError("ZIP page index cache poisoned".to_string())
+				})?;
+				if cache
+					.get(&path_key)
+					.is_some_and(|current| Arc::ptr_eq(current, &cache_entry))
+				{
+					cache.remove(&path_key);
+				}
+
+				cache_entry.notify.notify_all();
+				Err(error)
+			},
+		}
+	} else {
+		let mut state = cache_entry.state.lock().map_err(|_| {
+			FileError::UnknownError("ZIP page index cache entry poisoned".to_string())
+		})?;
+
+		loop {
+			match &*state {
+				ZipPageIndexState::Ready(index) => return Ok(index.clone()),
+				ZipPageIndexState::Building => {
+					state = cache_entry.notify.wait(state).map_err(|_| {
+						FileError::UnknownError("ZIP page index cache entry poisoned".to_string())
+					})?;
+				},
+			}
+		}
+	}
+}
 
 impl FileProcessor for ZipProcessor {
 	fn get_sample_size(path: &str) -> Result<u64, FileError> {
@@ -185,133 +357,35 @@ impl FileProcessor for ZipProcessor {
 		_: &StumpConfig,
 	) -> Result<(ContentType, Vec<u8>), FileError> {
 		let zip_file = File::open(path)?;
-
 		let mut archive = zip::ZipArchive::new(&zip_file)?;
-		let file_names_archive = archive.clone();
+		let page_index = get_or_build_page_index(path)?;
 
-		if archive.is_empty() {
-			error!(path, "Empty zip file");
-			return Err(FileError::ArchiveEmptyError);
-		}
+		let target_entry = page_index
+			.entries
+			.get((page - 1) as usize)
+			.ok_or(FileError::NoImageError)?;
+		let mut file = archive.by_index(target_entry.archive_index)?;
+		let mut contents = Vec::new();
+		file.read_to_end(&mut contents)?;
+		trace!(page, contents_len = contents.len(), "Read zip entry");
 
-		let mut file_names = file_names_archive.file_names().collect::<Vec<_>>();
-		sort_file_names(&mut file_names);
-
-		let mut images_seen = 0;
-		for name in file_names {
-			let mut file = archive.by_name(name)?;
-
-			if file.is_dir() {
-				continue;
-			}
-
-			let path_buf = file.enclosed_name().unwrap_or_else(|| {
-				tracing::warn!("Failed to get enclosed name for zip entry");
-				PathBuf::from(name)
-			});
-			let path = path_buf.as_path();
-
-			if path.is_hidden_file() {
-				tracing::trace!(path = ?path_buf, "Skipping hidden file");
-				continue;
-			}
-
-			let content_type = path.naive_content_type();
-
-			if images_seen + 1 == page && content_type.is_image() {
-				trace!(?name, page, ?content_type, "Found targeted zip entry");
-
-				let mut contents = Vec::new();
-				file.read_to_end(&mut contents)?;
-				trace!(contents_len = contents.len(), "Read zip entry");
-
-				return Ok((content_type, contents));
-			} else if content_type.is_image() {
-				images_seen += 1;
-			}
-		}
-
-		error!(page, path, "Failed to find valid image in zip file");
-
-		Err(FileError::NoImageError)
+		Ok((target_entry.content_type, contents))
 	}
 
 	fn get_page_count(path: &str, _: &StumpConfig) -> Result<i32, FileError> {
-		let zip_file = File::open(path)?;
-
-		let mut archive = zip::ZipArchive::new(&zip_file)?;
-		let file_names_archive = archive.clone();
-
-		if archive.is_empty() {
-			error!(path, "Empty zip file");
-			return Err(FileError::ArchiveEmptyError);
-		}
-
-		let mut pages = 0;
-		let file_names = file_names_archive.file_names().collect::<Vec<_>>();
-		for name in file_names {
-			let file = archive.by_name(name)?;
-			let path_buf = file.enclosed_name().unwrap_or_else(|| {
-				tracing::warn!("Failed to get enclosed name for zip entry");
-				PathBuf::from(name)
-			});
-			let content_type = path_buf.as_path().naive_content_type();
-			let is_hidden = path_buf.as_path().is_hidden_file();
-
-			if content_type.is_image() && !is_hidden {
-				pages += 1;
-			}
-		}
-
-		Ok(pages)
+		Ok(get_or_build_page_index(path)?.entries.len() as i32)
 	}
 
 	fn get_page_content_types(
 		path: &str,
 		pages: Vec<i32>,
 	) -> Result<HashMap<i32, ContentType>, FileError> {
-		let zip_file = File::open(path)?;
-		let mut archive = zip::ZipArchive::new(&zip_file)?;
-
-		if archive.is_empty() {
-			return Err(FileError::ArchiveEmptyError);
-		}
-
-		let file_names_archive = archive.clone();
-		let mut file_names = file_names_archive.file_names().collect::<Vec<_>>();
-		sort_file_names(&mut file_names);
+		let page_index = get_or_build_page_index(path)?;
 
 		let mut content_types = HashMap::new();
-
-		let mut pages_found = 0;
-		for name in file_names {
-			let file = archive.by_name(name)?;
-			if file.is_dir() {
-				continue;
-			}
-			let path_buf = file.enclosed_name().unwrap_or_else(|| {
-				tracing::warn!("Failed to get enclosed name for zip entry");
-				PathBuf::from(name)
-			});
-			let path = path_buf.as_path();
-
-			if path.is_hidden_file() {
-				trace!(path = ?path_buf, "Skipping hidden file");
-				continue;
-			}
-
-			let content_type = path.naive_content_type();
-			let is_page_in_target = pages.contains(&(pages_found + 1));
-
-			if is_page_in_target && content_type.is_image() {
-				trace!(?name, ?content_type, "found a targeted zip entry");
-				content_types.insert(pages_found + 1, content_type);
-				pages_found += 1;
-			}
-
-			// If we've found all the pages we need, we can stop
-			if pages_found == pages.len() as i32 {
-				break;
+		for page in pages {
+			if let Some(entry) = page_index.entries.get((page - 1) as usize) {
+				content_types.insert(page, entry.content_type);
 			}
 		}
 
