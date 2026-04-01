@@ -1,9 +1,10 @@
 #!/bin/bash
 
+PRISMA_SCHEMA=${PRISMA_SCHEMA:-./core/prisma/schema.sqlite.prisma}
 
 if [ "$RUN_PRISMA_GENERATE" = "true" ]; then
   set -ex; \
-    cargo prisma generate --schema ./core/prisma/schema.sqlite.prisma
+    cargo prisma generate --schema "$PRISMA_SCHEMA"
 fi
 
 set -ex; \

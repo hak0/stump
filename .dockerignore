@@ -8,8 +8,11 @@ target
 *.log
 *.db
 .git
+.github
+.husky
+.vscode
+.codex-temp-check
 
 # ignore contents in excess directories, some are kept only so cargo 
 # doesn't yell at me
-docs
 apps/mobile
